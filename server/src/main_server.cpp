@@ -14,7 +14,7 @@
 #define RESPONSE_SIZE 512
 #define ADRESS_SIZE 16
 #define OPCODE_SIZE 4
-#define PATH "[enter sever data dir path here]"
+#define PATH "[enter server data dir path here]"
 
 void extractOpcode(const char* buffer, char* opcode){
     opcode[0] = buffer[0];
@@ -69,37 +69,21 @@ int main(){
         std::ifstream file(file_path, std::ios::binary);
 
         if(file){
-            std::cout<<"File found!"<<std::endl;
+            std::cout<<"[FILE FOUND]"<<std::endl;
         }
         else{
-            std::cout<<"File not found"<<std::endl;
+            std::cout<<"[FILE NOT FOUND]"<<std::endl;
         }
 
     }else if(opcode_value == 2){
         std::cout<<"WRQ"<<std::endl;
     }
-    else if(opcode_value == 3){
-        std::cout<<"DATA"<<std::endl;
-    }
-    else if(opcode_value == 4){
-        std::cout<<"ACK"<<std::endl;
-    }
-    else if(opcode_value == 5){
-        std::cout<<"ERROR"<<std::endl;
-    }
-    else{
-        std::cout<<"Undefined opcode error"<<std::endl;
-    }
-
-
 
     char response[RESPONSE_SIZE] = "Connection established";
     if(sendto(w_socket, response, strlen(response), 0, (const sockaddr *)&client_addr, sizeof(client_addr))<0){
         std::cerr<<"Sendto error"<<std::endl;
         return 1;
     }
-
-
 
     return 0;
 }
