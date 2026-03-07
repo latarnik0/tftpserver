@@ -33,5 +33,5 @@ The goal of this project is to expand knowledge and understanding of **Networks 
 
 ## Additional Info
 * Project start date: **March 2026**
-* Last update: **05.03.2026**
+* Last update: **07.03.2026**
 * Status: **in progress**
