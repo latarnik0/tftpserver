@@ -7,7 +7,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 file(GLOB SOURCES "src/*.cpp")
 
-target_include_directories(server PRIVATE common/include)
-
-add_executable(server server/src/main_server.cpp)
-add_executable(client client/src/main_client.cpp)
+add_executable(server server/src/server.cpp server/src/main.cpp)
+target_include_directories(server PRIVATE server/include)
