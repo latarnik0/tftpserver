@@ -4,4 +4,4 @@ build/
 *.a
 bin/
 *.txt
-server
+tftpserver
