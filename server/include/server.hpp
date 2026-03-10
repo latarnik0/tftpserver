@@ -5,7 +5,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PATH "tftpserver/data"
+#define PATH "/home/latarnik3/tftpserver/data"
 
 constexpr int MAIN_PORT = 6969;
 constexpr int TX_BUFFER_SIZE = 512;
@@ -17,6 +17,7 @@ uint16_t extractBlockNumber(const char* buffer);
 uint16_t extractErrorId(const char* buffer);
 
 void newPort(int &new_socket);
+void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const std::string& error_msg);
 bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len, uint16_t expected_block);
 void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_SIZE], sockaddr_in &client_addr, socklen_t &client_addr_len);
 void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZE], sockaddr_in &client_addr);

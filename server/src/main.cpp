@@ -63,7 +63,10 @@ int main() {
         else if(op == 2){
             std::cout << "WRQ" << std::endl;
             waitForData(rx_buffer, tx_buffer, client_addr, client_addr_len);
-
+        }
+        else{
+            std::cout<<"Illegal TFTP operation"<<std::endl;
+            sendError(main_socket, client_addr, 4, "[Illegal TFTP operation]");
         }
     }
     close(main_socket);

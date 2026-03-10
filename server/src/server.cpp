@@ -58,6 +58,18 @@ bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len
     return false;
 }
 
+void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const std::string& error_msg) {
+    char error_buffer[516];
+    *(uint16_t*)(&error_buffer[0]) = htons(5);
+    *(uint16_t*)(&error_buffer[2]) = htons(error_code);
+    
+    std::strcpy(&error_buffer[4], error_msg.c_str());
+
+    int packet_size = 4 + error_msg.length() + 1;
+    
+    sendto(socket, error_buffer, packet_size, 0, (const sockaddr *)&target_addr, sizeof(target_addr));
+}
+
 void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_SIZE], sockaddr_in &client_addr, socklen_t &client_addr_len){
     int receive_socket;
     newPort(receive_socket);
@@ -77,19 +89,40 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     sendto(receive_socket, tx_buffer, 4, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
 
     while(true){
-        int bytes_recv = recvfrom(receive_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&client_addr, (socklen_t*)&client_addr_len);
+        struct sockaddr_in sender_addr;
+        socklen_t sender_addr_len = sizeof(sender_addr);
+        memset(&sender_addr, 0, sizeof(sender_addr));
+
+        int wait_limit = 4;
+        
+        int bytes_recv = recvfrom(receive_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&sender_addr, (socklen_t*)&sender_addr_len);
 
         if(bytes_recv < 0){
-            std::cerr<<"Packet error"<<std::endl;
-            break;
-        };
+            wait_limit--;
+            if(wait_limit == 0){
+                break;
+            }
+            sendto(receive_socket, tx_buffer, 4, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
+            continue;
+
+        }
+        wait_limit = 4;
+
+        if(sender_addr.sin_port != client_addr.sin_port || sender_addr.sin_addr.s_addr != client_addr.sin_addr.s_addr){
+            sendError(receive_socket, sender_addr, 5, "[Unauthorized client]");
+            continue;
+        }
         
         recv_opcode = extractOpcode(rx_buffer);
         recv_block_number = extractBlockNumber(rx_buffer);
 
-        if(recv_opcode != 3){
-            std::cerr<<"Wrong packet"<<std::endl;
+        if(recv_opcode == 5){
+            sendError(receive_socket, client_addr, 5, "[Transfer terminated]");
         }
+        else if(recv_opcode != 3 && recv_opcode != 5){
+            sendError(receive_socket, client_addr, 4, "[Illegal TFTP operation]");
+        }
+
         file.write(&rx_buffer[4], bytes_recv - 4);
 
         *(uint16_t*)(&tx_buffer[2]) = htons(recv_block_number);
@@ -107,18 +140,8 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
     std::filesystem::path file_path = std::filesystem::path(PATH) / file_name; 
     std::ifstream file(file_path, std::ios::binary);
 
-    if(file){
-        std::cout << "[FILE FOUND]" << std::endl;
-    }
-    else{
-        std::string error_msg = "[FILE NOT FOUND]";
-        uint16_t error_opcode = 5;
-        uint16_t error_id = 1;
-        *(uint16_t*)(&tx_buffer[0]) = htons(error_opcode);
-        *(uint16_t*)(&tx_buffer[2]) = htons(error_id);
-        std::strcpy(&tx_buffer[4], error_msg.c_str());
-
-        sendto(transfer_socket, tx_buffer, 30, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
+    if(!file){
+        sendError(transfer_socket, client_addr, 1, "[File not found]");
     }
 
     uint16_t opcode = 3;
@@ -127,25 +150,32 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
     *(uint16_t*)(&tx_buffer[0]) = htons(opcode);
 
     socklen_t client_addr_len = sizeof(client_addr);
-    
+
     struct timeval tv;
     tv.tv_sec = 3;
     tv.tv_usec = 0;
     setsockopt(transfer_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     while(true){
+        struct sockaddr_in receiver_addr;
+        socklen_t receiver_addr_len = sizeof(receiver_addr);
+        memset(&receiver_addr, 0, sizeof(receiver_addr));
         *(uint16_t*)(&tx_buffer[2]) = htons(block_number);
         
         file.read((&tx_buffer[4]), TX_BUFFER_SIZE);
         int bytes_read = file.gcount();
         
-        sendto(transfer_socket, tx_buffer, 4+bytes_read, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
+        sendto(transfer_socket, tx_buffer, 4+bytes_read, 0, (const sockaddr *)&receiver_addr, sizeof(receiver_addr));
         
         for(int i=0; i<5; i++){
-            if(waitForAck(transfer_socket, client_addr, client_addr_len, block_number)){
+            if(waitForAck(transfer_socket, receiver_addr, receiver_addr_len, block_number)){
+                if(receiver_addr.sin_port != client_addr.sin_port || receiver_addr.sin_addr.s_addr != client_addr.sin_addr.s_addr){
+                    sendError(transfer_socket, receiver_addr, 5, "[Unauthorized client]");
+                    continue;
+                }
                 std::cout<<"Packet ID: "<<block_number<<std::endl;
                 block_number++;
-                break; 
+                break;
             }
             else{
                 std::cout<<"Retransmission... ("<<i<<")"<<std::endl;
