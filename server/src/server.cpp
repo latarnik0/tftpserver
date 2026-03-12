@@ -20,6 +20,11 @@ uint16_t extractErrorId(const char* buffer) {
     return (static_cast<uint8_t>(buffer[2]) << 8) | static_cast<uint8_t>(buffer[3]);
 }
 
+std::string extractTransferMode(const char* buffer, std::string& file_name){
+    std::string mode(&buffer[2 + file_name.length() + 1]);
+    return mode;
+}
+
 void newPort(int &new_socket){
     new_socket = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -74,12 +79,26 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     int receive_socket;
     newPort(receive_socket);
 
+    std::ofstream file;
     std::string file_name(&rx_buffer[2]);
-    std::filesystem::path file_path = std::filesystem::path(PATH) / file_name; 
-    std::ofstream file(file_path, std::ios::binary);
+    std::string transfer_mode = extractTransferMode(rx_buffer, file_name);
+
+    std::filesystem::path file_path = std::filesystem::path(PATH) / file_name;
+
+    if(transfer_mode == "octet"){ 
+        file.open(file_path, std::ios::binary);
+    }
+    else if(transfer_mode == "netascii"){
+        file.open(file_path);
+    }
+    else{
+        sendError(receive_socket, client_addr, 4, "[Illegal TFTP operation]");
+        return;
+    }
 
     uint16_t ack_opcode = 4;
     uint16_t ack_block_number = 0;
+   
     uint16_t recv_opcode;
     uint16_t recv_block_number;
 
@@ -87,6 +106,8 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     *(uint16_t*)(&tx_buffer[2]) = htons(ack_block_number);
 
     sendto(receive_socket, tx_buffer, 4, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
+
+    bool edge_case = false;
 
     while(true){
         struct sockaddr_in sender_addr;
@@ -123,7 +144,51 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
             sendError(receive_socket, client_addr, 4, "[Illegal TFTP operation]");
         }
 
-        file.write(&rx_buffer[4], bytes_recv - 4);
+        if(transfer_mode == "netascii"){
+            bool prev_r = false;
+
+            for(int i=4; i<=bytes_recv; i++){
+                if(edge_case == true){
+                    if(rx_buffer[i] == '\n'){
+                        file.put(rx_buffer[i]);
+                    }
+                    else if(rx_buffer[i] == '\0'){
+                        file.put('\r');
+                    }
+                    else{
+                        file.put('\r');
+                        file.put(rx_buffer[i]);
+                    }
+                    edge_case = false;
+                }
+
+                if(prev_r){
+                    if(rx_buffer[i] == '\n'){ 
+                        file.put('\n'); 
+                    }
+                    else if(rx_buffer[i] == '\0'){ 
+                        file.put('\r'); 
+                    }
+                }
+
+                if(rx_buffer[i] != '\r'){ 
+                    file.put(rx_buffer[i]); 
+                }
+                else if(rx_buffer[i] == '\r'){ 
+                    prev_r = true; 
+                    if(i == 511){
+                        file.put('\r');
+                        edge_case = true;
+                        break;
+                    }
+                }
+                else continue; 
+            }
+        }
+        else{
+            file.write(&rx_buffer[4], bytes_recv - 4);
+        }
+
 
         *(uint16_t*)(&tx_buffer[2]) = htons(recv_block_number);
         sendto(receive_socket, tx_buffer, 4, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
@@ -136,9 +201,23 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
     int transfer_socket;
     newPort(transfer_socket);
 
+    std::ifstream file;
     std::string file_name(&rx_buffer[2]);
+    std::string transfer_mode = extractTransferMode(rx_buffer, file_name);
+
     std::filesystem::path file_path = std::filesystem::path(PATH) / file_name; 
     std::ifstream file(file_path, std::ios::binary);
+
+    if(transfer_mode == "octet"){ 
+        file.open(file_path, std::ios::binary);
+    }
+    else if(transfer_mode == "netascii"){
+        file.open(file_path);
+    }
+    else{
+        sendError(transfer_socket, client_addr, 4, "[Illegal TFTP operation]");
+        return;
+    }
 
     if(!file){
         sendError(transfer_socket, client_addr, 1, "[File not found]");
@@ -156,16 +235,55 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
     tv.tv_usec = 0;
     setsockopt(transfer_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
+    bool edge_case = false;
+    
     while(true){
         struct sockaddr_in receiver_addr;
         socklen_t receiver_addr_len = sizeof(receiver_addr);
         memset(&receiver_addr, 0, sizeof(receiver_addr));
         *(uint16_t*)(&tx_buffer[2]) = htons(block_number);
         
-        file.read((&tx_buffer[4]), TX_BUFFER_SIZE);
-        int bytes_read = file.gcount();
-        
-        sendto(transfer_socket, tx_buffer, 4+bytes_read, 0, (const sockaddr *)&receiver_addr, sizeof(receiver_addr));
+        int payload_size = 0;
+
+        if(transfer_mode == "netascii"){
+            char c;
+            if(edge_case){
+                    tx_buffer[4+payload_size] = '\n';
+                    payload_size++;
+                    edge_case = false;
+            }
+            while(file.get(c)){
+                if(c != '\n'){
+                    tx_buffer[4+payload_size] = c;
+                    payload_size++;
+                }
+                else{
+                    if(c == '\n' && payload_size == 511){
+                        tx_buffer[4+payload_size] = '\r';
+                        edge_case = true;
+                        payload_size++;
+                        break;
+                    }
+                    else{
+                        tx_buffer[4+payload_size] = '\r';
+                        payload_size++;
+
+                        tx_buffer[4+payload_size] = c;
+                        payload_size++;
+                    }
+                }
+
+                if(payload_size >= 512){
+                    break;
+                }
+            }
+        }
+        else{
+            file.read((&tx_buffer[4]), 512);
+            payload_size = file.gcount();
+        }
+
+        sendto(transfer_socket, tx_buffer, 4+payload_size, 0, (const sockaddr *)&receiver_addr, sizeof(receiver_addr));
         
         for(int i=0; i<5; i++){
             if(waitForAck(transfer_socket, receiver_addr, receiver_addr_len, block_number)){
@@ -179,10 +297,10 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
             }
             else{
                 std::cout<<"Retransmission... ("<<i<<")"<<std::endl;
-                sendto(transfer_socket, tx_buffer, 4+bytes_read, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
+                sendto(transfer_socket, tx_buffer, 4+payload_size, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
             }
         }
-        if(bytes_read < 512) break; 
+        if(payload_size < 512) break; 
     }
 }
 
