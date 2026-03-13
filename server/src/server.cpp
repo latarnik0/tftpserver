@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <cstdlib>
 #include <ctime>
+#include <errno.h>
 
 uint16_t extractOpcode(const char* buffer){
     return (static_cast<u_int16_t>(buffer[0]) << 8) | static_cast<u_int16_t>(buffer[1]);
@@ -39,30 +40,6 @@ void newPort(int &new_socket){
     }
 }
 
-bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len, uint16_t expected_block){
-    char ack_buffer[8];
-        
-    int bytes_received = recvfrom(socket, ack_buffer, 8, 0, (sockaddr *)&sender_addr, &sender_addr_len);
-
-    if(bytes_received >= 4){
-        uint16_t ack_opcode = extractOpcode(ack_buffer);
-        uint16_t ack_block_num = extractBlockNumber(ack_buffer);
-        
-        if(ack_opcode == 4 && ack_block_num == expected_block){
-            return true;
-        }
-        else if(ack_opcode == 5){
-            uint16_t error_id = extractErrorId(ack_buffer);
-            std::cout<<"[CLIENT ERROR] Transfer aborted. Error ID: "<<error_id<<std::endl;
-            return false;
-        } 
-    }
-    else{
-        return false;
-    }
-    return false;
-}
-
 void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const std::string& error_msg) {
     char error_buffer[516];
     *(uint16_t*)(&error_buffer[0]) = htons(5);
@@ -73,6 +50,50 @@ void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const 
     int packet_size = 4 + error_msg.length() + 1;
     
     sendto(socket, error_buffer, packet_size, 0, (const sockaddr *)&target_addr, sizeof(target_addr));
+}
+
+bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len, uint16_t expected_block){
+    char ack_buffer[8];
+
+    struct timeval tv;
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    while(true){
+        int bytes_received = recvfrom(socket, ack_buffer, 8, 0, (sockaddr *)&sender_addr, &sender_addr_len);
+    
+        if(bytes_received < 0){
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return false; 
+            }
+            return false;
+        }
+
+        if(bytes_received >= 4){
+            uint16_t ack_opcode = extractOpcode(ack_buffer);
+            uint16_t ack_block_num = extractBlockNumber(ack_buffer);
+        
+            if(ack_opcode == 4 && ack_block_num == expected_block){
+                return true;
+            }
+            else if(ack_opcode == 4 && ack_block_num != expected_block){
+                continue;
+            }
+            else if(ack_opcode == 5){
+                uint16_t error_id = extractErrorId(ack_buffer);
+                sendError(socket, sender_addr, error_id, "Error");
+                return false;
+            }
+            else{
+                return false;
+            }
+        }
+        else{
+            return false;
+        }
+    }
+    return false;
 }
 
 void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_SIZE], sockaddr_in &client_addr, socklen_t &client_addr_len){
@@ -206,7 +227,6 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
     std::string transfer_mode = extractTransferMode(rx_buffer, file_name);
 
     std::filesystem::path file_path = std::filesystem::path(PATH) / file_name; 
-    std::ifstream file(file_path, std::ios::binary);
 
     if(transfer_mode == "octet"){ 
         file.open(file_path, std::ios::binary);
@@ -230,17 +250,12 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
 
     socklen_t client_addr_len = sizeof(client_addr);
 
-    struct timeval tv;
-    tv.tv_sec = 3;
-    tv.tv_usec = 0;
-    setsockopt(transfer_socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
     bool edge_case = false;
+    struct sockaddr_in receiver_addr;
+    socklen_t receiver_addr_len = sizeof(receiver_addr);
+    memset(&receiver_addr, 0, sizeof(receiver_addr));
     
     while(true){
-        struct sockaddr_in receiver_addr;
-        socklen_t receiver_addr_len = sizeof(receiver_addr);
-        memset(&receiver_addr, 0, sizeof(receiver_addr));
         *(uint16_t*)(&tx_buffer[2]) = htons(block_number);
         
         int payload_size = 0;
@@ -254,8 +269,17 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
             }
             while(file.get(c)){
                 if(c != '\n'){
-                    tx_buffer[4+payload_size] = c;
-                    payload_size++;
+                    if(c == '\r'){
+                        tx_buffer[4+payload_size] = '\r';
+                        payload_size++;
+
+                        tx_buffer[4+payload_size] = '\0';
+                        payload_size++;
+                    }
+                    else{
+                        tx_buffer[4+payload_size] = c;
+                        payload_size++;
+                    }
                 }
                 else{
                     if(c == '\n' && payload_size == 511){
@@ -283,7 +307,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
             payload_size = file.gcount();
         }
 
-        sendto(transfer_socket, tx_buffer, 4+payload_size, 0, (const sockaddr *)&receiver_addr, sizeof(receiver_addr));
+        sendto(transfer_socket, tx_buffer, 4+payload_size, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
         
         for(int i=0; i<5; i++){
             if(waitForAck(transfer_socket, receiver_addr, receiver_addr_len, block_number)){

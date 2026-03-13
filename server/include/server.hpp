@@ -1,13 +1,14 @@
 #pragma once
 
+#include <string>   
 #include <cstdint>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PATH "/home/latarnik3/tftpserver/data"
+#define PATH "tftpserver/data"
 
-constexpr int MAIN_PORT = 6969;
+constexpr int MAIN_PORT = 9069;
 constexpr int TX_BUFFER_SIZE = 516;
 constexpr int RX_BUFFER_SIZE = 516; 
 constexpr int ADDRESS_SIZE = 16;
@@ -15,7 +16,7 @@ constexpr int ADDRESS_SIZE = 16;
 uint16_t extractOpcode(const char* buffer);
 uint16_t extractBlockNumber(const char* buffer);
 uint16_t extractErrorId(const char* buffer);
-
+std::string extractTransferMode(const char* buffer, std::string& file_name);
 void newPort(int &new_socket);
 void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const std::string& error_msg);
 bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len, uint16_t expected_block);
