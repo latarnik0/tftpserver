@@ -13,7 +13,7 @@ The goal of this project is to expand knowledge and understanding of **Networks 
 * **Protocol Parsing:** Efficiently extracts 2-byte Opcodes to differentiate between Read Requests (RRQ) and Write Requests (WRQ).
 * **Transfer modes:** Efficiently handling the two modes of data transfer: `octet` (binary) and `netascii`.
 * **Block File Transfer:** Slices files into 512-byte data blocks for sequential transmission and ACK validation.
-* **Multi-Client Support:** (Planned) Implements the Transfer Identifier (TID) mechanism, dynamically allocating new ephemeral ports (via multithreading) to handle multiple clients concurrently without blocking the main port 69.
+* **Multi-Client Support:** Implements the Transfer Identifier (TID) mechanism, dynamically allocating new ephemeral ports to handle multiple clients concurrently without blocking the main port 69.
 
 
 ## Technical Highlights
