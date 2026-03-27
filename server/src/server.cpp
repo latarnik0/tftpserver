@@ -40,6 +40,19 @@ void newPort(int &new_socket){
     }
 }
 
+bool isFileNameValid(const std::string& filename){
+    if (filename.find("../") != std::string::npos || filename.find("..\\") != std::string::npos) {
+        return false;
+    }
+    if (!filename.empty() && (filename[0] == '/' || filename[0] == '\\')) {
+        return false;
+    }
+    if (filename.empty()) {
+        return false;
+    }
+    return true;
+}
+
 void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const std::string& error_msg) {
     char error_buffer[516];
     *(uint16_t*)(&error_buffer[0]) = htons(5);
@@ -100,8 +113,18 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     int receive_socket;
     newPort(receive_socket);
 
+    struct sockaddr_in sender_addr;
+    socklen_t sender_addr_len = sizeof(sender_addr);
+    memset(&sender_addr, 0, sizeof(sender_addr));
+
     std::ofstream file;
     std::string file_name(&rx_buffer[2]);
+
+    if(!isFileNameValid(file_name)){
+        sendError(receive_socket, sender_addr, 2, "[Access Violation]");
+        return;
+    }
+
     std::string transfer_mode = extractTransferMode(rx_buffer, file_name);
 
     std::filesystem::path file_path = std::filesystem::path(PATH) / file_name;
@@ -131,10 +154,6 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     bool edge_case = false;
 
     while(true){
-        struct sockaddr_in sender_addr;
-        socklen_t sender_addr_len = sizeof(sender_addr);
-        memset(&sender_addr, 0, sizeof(sender_addr));
-
         int wait_limit = 4;
         
         int bytes_recv = recvfrom(receive_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&sender_addr, (socklen_t*)&sender_addr_len);
@@ -160,9 +179,11 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
 
         if(recv_opcode == 5){
             sendError(receive_socket, client_addr, 5, "[Transfer terminated]");
+            return;
         }
         else if(recv_opcode != 3 && recv_opcode != 5){
             sendError(receive_socket, client_addr, 4, "[Illegal TFTP operation]");
+            return;
         }
 
         if(transfer_mode == "netascii"){
@@ -216,19 +237,29 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
 
         if(bytes_recv < 516) break; 
     }
+    close(receive_socket);
 }
 
 void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZE], sockaddr_in &client_addr){
     int transfer_socket;
     newPort(transfer_socket);
 
+    struct sockaddr_in receiver_addr;
+    socklen_t receiver_addr_len = sizeof(receiver_addr);
+    memset(&receiver_addr, 0, sizeof(receiver_addr));
+
     std::ifstream file;
     std::string file_name(&rx_buffer[2]);
     std::string transfer_mode = extractTransferMode(rx_buffer, file_name);
 
+    if(!isFileNameValid(file_name)){
+        sendError(transfer_socket, client_addr, 2, "[Access Violation]");
+        return;
+    }
+
     std::filesystem::path file_path = std::filesystem::path(PATH) / file_name; 
 
-    if(transfer_mode == "octet"){ 
+    if(transfer_mode == "octet"){
         file.open(file_path, std::ios::binary);
     }
     else if(transfer_mode == "netascii"){
@@ -241,6 +272,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
 
     if(!file){
         sendError(transfer_socket, client_addr, 1, "[File not found]");
+        return;
     }
 
     uint16_t opcode = 3;
@@ -251,9 +283,6 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
     socklen_t client_addr_len = sizeof(client_addr);
 
     bool edge_case = false;
-    struct sockaddr_in receiver_addr;
-    socklen_t receiver_addr_len = sizeof(receiver_addr);
-    memset(&receiver_addr, 0, sizeof(receiver_addr));
     
     while(true){
         *(uint16_t*)(&tx_buffer[2]) = htons(block_number);
@@ -324,7 +353,8 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
                 sendto(transfer_socket, tx_buffer, 4+payload_size, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
             }
         }
-        if(payload_size < 512) break; 
+        if(payload_size < 512) break;
     }
+    close(transfer_socket);
 }
 

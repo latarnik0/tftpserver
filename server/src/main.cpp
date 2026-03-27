@@ -26,6 +26,7 @@ int main() {
 
     if (bind(main_socket, (const sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         std::cerr << "Bind error" << std::endl;
+        close(main_socket);
         return 1;
     }
     std::cout << "Bind executed" << std::endl;
@@ -46,6 +47,7 @@ int main() {
 
         if (recvfrom(main_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&client_addr, &client_addr_len) < 0) {
             std::cerr << "Recvfrom error" << std::endl;
+            close(main_socket);
             continue;
         }
 
@@ -67,8 +69,8 @@ int main() {
         else{
             std::cout<<"Illegal TFTP operation"<<std::endl;
             sendError(main_socket, client_addr, 4, "[Illegal TFTP operation]");
+            close(main_socket);
         }
     }
-    close(main_socket);
     return 0;
 }

@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define PATH "tftpserver/data"
+#define PATH "/home/latarnik3/tftpserver/data"
 
 constexpr int MAIN_PORT = 9069;
 constexpr int TX_BUFFER_SIZE = 516;
