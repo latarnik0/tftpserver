@@ -1,11 +1,10 @@
-# 📤 Low-Level TFTP Implementation in C++
+# Low-Level TFTP Implementation in C++
 
 ## Overview
 
-**TFTP** is a lightweight, terminal-based implementation of the Trivial File Transfer Protocol (based on RFC 1350) written from scratch in **C++**. 
+**TFTP** is terminal-based implementation of the Trivial File Transfer Protocol (based on RFC 1350) written from scratch in **C++**. 
 **This project interacts directly with Linux POSIX network sockets to handle raw UDP datagrams.**
-The goal of this project is to expand knowledge and understanding of **Networks and Network Programming architecture**, specifically how to establish secure and connectionless communication, manage byte-order conversions (Endianness), and implement a byte-level binary protocol without relying on external network libraries like `Asio`.
-
+The goal of this project is to expand knowledge and understanding of **Networks and Network Programming architecture**, specifically how to establish secure and connectionless communication, manage byte-order conversions (Endianness), and implement a byte-level binary protocol without relying on external network libraries.
 
 
 ## Key Features 
@@ -44,5 +43,5 @@ The goal of this project is to expand knowledge and understanding of **Networks 
 
 ## Additional Info
 * Project start date: **March 2026**
-* Last update: **13.03.2026**
+* Last update: **27.03.2026**
 * Status: **in progress**
