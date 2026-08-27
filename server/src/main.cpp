@@ -17,8 +17,8 @@ int main()
 
     while (true)
     {
-        char rx_buffer[RX_BUFFER_SIZE];
-        char tx_buffer[TX_BUFFER_SIZE];
+        char rx_buffer[BUFFER_SIZE];
+        char tx_buffer[BUFFER_SIZE];
         
         struct sockaddr_in client_addr;
         socklen_t client_addr_len = sizeof(client_addr);
@@ -36,12 +36,12 @@ int main()
         
         uint16_t op = extractOpcode(rx_buffer);
         
-        if(op == 1)
+        if(op == RRQ_OPCODE)
         {
             std::cout << "RRQ" << std::endl;
             sendData(tx_buffer, rx_buffer, client_addr);
         }
-        else if(op == 2)
+        else if(op == WRQ_OPCODE)
         {
             std::cout << "WRQ" << std::endl;
             waitForData(rx_buffer, tx_buffer, client_addr, client_addr_len);
@@ -49,7 +49,7 @@ int main()
         else
         {
             std::cout << "Illegal TFTP operation" << std::endl;
-            sendError(main_socket, client_addr, 4, "[Illegal TFTP operation]");
+            sendError(main_socket, client_addr, ILLEGAL_TFTP_OPERATION_ERROR_CODE, "[Illegal TFTP operation]");
             close(main_socket);
             break;
         }

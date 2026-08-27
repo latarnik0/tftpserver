@@ -48,7 +48,7 @@ std::string determineTransferMode(const std::string& raw_transfer_mode, const st
     }
     else
     {
-        sendError(receive_socket, client_addr, 4, "[Illegal TFTP operation]");
+        sendError(receive_socket, client_addr, ILLEGAL_TFTP_OPERATION_CODE, "[Illegal TFTP operation]");
         return default_transfer_mode;
     }
 }
@@ -98,7 +98,7 @@ bool waitForInitialPacket(int main_socket, char* rx_buffer, sockaddr_in& client_
     
     setsockopt(main_socket, SOL_SOCKET, SO_RCVTIMEO, &tv_infinite, sizeof(tv_infinite));
 
-    if (recvfrom(main_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&client_addr, &client_addr_len) < 0) 
+    if (recvfrom(main_socket, rx_buffer, BUFFER_SIZE, 0, (sockaddr *)&client_addr, &client_addr_len) < 0) 
     {
         std::cerr << "Recvfrom error" << std::endl;
         return false;
@@ -110,17 +110,17 @@ void checkFileName(const std::string& filename, const sockaddr_in& client_addr, 
 {
     if (filename.find("../") != std::string::npos || filename.find("..\\") != std::string::npos)
     {
-        sendError(socket, client_addr, 2, "[Access Violation]");
+        sendError(socket, client_addr, ACCESS_VIOLATION_ERROR_CODE, "[Access Violation]");
         close(socket);
         exit(EXIT_FAILURE); 
     }
     if (!filename.empty() && (filename[0] == '/' || filename[0] == '\\')) {
-        sendError(socket, client_addr, 2, "[Access Violation]");
+        sendError(socket, client_addr, ACCESS_VIOLATION_ERROR_CODE, "[Access Violation]");
         close(socket);
         exit(EXIT_FAILURE); 
     }
     if (filename.empty()) {
-        sendError(socket, client_addr, 2, "[Access Violation]");
+        sendError(socket, client_addr, ACCESS_VIOLATION_ERROR_CODE, "[Access Violation]");
         close(socket);
         exit(EXIT_FAILURE); 
     }
@@ -171,7 +171,7 @@ void netasciiEdgeCaseCheckLoop(const std::string& transfer_mode, bool edge_case,
                 else if(rx_buffer[i] == '\r')
                 { 
                     prev_r = true; 
-                    if(i == 511)
+                    if(i == PAYLOAD_SIZE-1)
                     {
                         file.put('\r');
                         edge_case = true;
@@ -189,7 +189,7 @@ void netasciiEdgeCaseCheckLoop(const std::string& transfer_mode, bool edge_case,
 
 void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const std::string& error_msg)
 {
-    char error_buffer[516];
+    char error_buffer[BUFFER_SIZE];
     *(uint16_t*)(&error_buffer[0]) = htons(5);
     *(uint16_t*)(&error_buffer[2]) = htons(error_code);
     std::strcpy(&error_buffer[4], error_msg.c_str());
@@ -200,7 +200,7 @@ void sendError(int socket, sockaddr_in &target_addr, uint16_t error_code, const 
 
 bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len, uint16_t expected_block)
 {
-    char ack_buffer[8];
+    char ack_buffer[ACK_BUFFER_SIZE];
 
     struct timeval tv;
     tv.tv_sec = 3;
@@ -225,15 +225,15 @@ bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len
             uint16_t ack_opcode = extractOpcode(ack_buffer);
             uint16_t ack_block_num = extractBlockNumber(ack_buffer);
         
-            if(ack_opcode == 4 && ack_block_num == expected_block)
+            if(ack_opcode == ACK_OPCODE && ack_block_num == expected_block)
             {
                 return true;
             }
-            else if(ack_opcode == 4 && ack_block_num != expected_block)
+            else if(ack_opcode == ACK_OPCODE && ack_block_num != expected_block)
             {
                 continue;
             }
-            else if(ack_opcode == 5)
+            else if(ack_opcode == ERROR_OPCODE)
             {
                 uint16_t error_id = extractErrorId(ack_buffer);
                 sendError(socket, sender_addr, error_id, "Error");
@@ -252,7 +252,7 @@ bool waitForAck(int socket, sockaddr_in &sender_addr, socklen_t &sender_addr_len
     return false;
 }
 
-void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_SIZE], sockaddr_in &client_addr, socklen_t &client_addr_len)
+void waitForData(char (&rx_buffer)[BUFFER_SIZE], char (&tx_buffer)[BUFFER_SIZE], sockaddr_in &client_addr, socklen_t &client_addr_len)
 {
     int receive_socket;
 
@@ -271,9 +271,7 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     std::filesystem::path file_path = std::filesystem::path(PATH) / file_name;
     std::string transfer_mode = determineTransferMode(raw_transfer_mode, file_path, file, receive_socket, sender_addr);
 
-    uint16_t ack_opcode = 4;
-    uint16_t ack_block_number = 0;
-   
+    uint16_t ack_block_number = 0;   
     uint16_t recv_opcode;
     uint16_t recv_block_number;
 
@@ -288,7 +286,7 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
     {
         int wait_limit = 4;
         
-        int bytes_recv = recvfrom(receive_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&sender_addr, (socklen_t*)&sender_addr_len);
+        int bytes_recv = recvfrom(receive_socket, rx_buffer, BUFFER_SIZE, 0, (sockaddr *)&sender_addr, (socklen_t*)&sender_addr_len);
 
         if(bytes_recv < 0)
         {
@@ -297,7 +295,7 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
             {
                 break;
             }
-            sendto(receive_socket, tx_buffer, 4, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
+            sendto(receive_socket, tx_buffer, ACK_OPCODE, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
             continue;
 
         }
@@ -305,21 +303,21 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
 
         if(sender_addr.sin_port != client_addr.sin_port || sender_addr.sin_addr.s_addr != client_addr.sin_addr.s_addr)
         {
-            sendError(receive_socket, sender_addr, 5, "[Unauthorized client]");
+            sendError(receive_socket, sender_addr, UNAUTHORIZED_ERROR_CODE, "[Unauthorized client]");
             continue;
         }
         
         recv_opcode = extractOpcode(rx_buffer);
         recv_block_number = extractBlockNumber(rx_buffer);
 
-        if(recv_opcode == 5)
+        if(recv_opcode == ERROR_OPCODE)
         {
-            sendError(receive_socket, client_addr, 5, "[Transfer terminated]");
+            sendError(receive_socket, client_addr, UNAUTHORIZED_ERROR_CODE, "[Transfer terminated]");
             return;
         }
-        else if(recv_opcode != 3 && recv_opcode != 5)
+        else if(recv_opcode != DATA_PACKET_OPCODE && recv_opcode != UNAUTHORIZED_ERROR_CODE)
         {
-            sendError(receive_socket, client_addr, 4, "[Illegal TFTP operation]");
+            sendError(receive_socket, client_addr, ILLEGAL_TFTP_OPERATION_ERROR_CODE, "[Illegal TFTP operation]");
             return;
         }
 
@@ -329,12 +327,12 @@ void waitForData(char (&rx_buffer)[RX_BUFFER_SIZE], char (&tx_buffer)[TX_BUFFER_
         *(uint16_t*)(&tx_buffer[2]) = htons(recv_block_number);
         sendto(receive_socket, tx_buffer, 4, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
 
-        if(bytes_recv < 516) break; 
+        if(bytes_recv < BUFFER_SIZE) break; 
     }
     close(receive_socket);
 }
 
-void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZE], sockaddr_in &client_addr)
+void sendData(char (&tx_buffer)[BUFFER_SIZE], char (&rx_buffer)[BUFFER_SIZE], sockaddr_in &client_addr)
 {
     int transfer_socket;
     createNewPort(transfer_socket);
@@ -355,15 +353,12 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
 
     if(!file)
     {
-        sendError(transfer_socket, client_addr, 1, "[File not found]");
+        sendError(transfer_socket, client_addr, FILE_NOT_FOUND_ERROR_CODE, "[File not found]");
         return;
     }
 
-    uint16_t opcode = 3;
     uint16_t block_number = 1;
-
-    *(uint16_t*)(&tx_buffer[0]) = htons(opcode);
-
+    *(uint16_t*)(&tx_buffer[0]) = htons(DATA_PACKET_OPCODE);
     socklen_t client_addr_len = sizeof(client_addr);
 
     bool edge_case = false;
@@ -403,7 +398,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
                 }
                 else
                 {
-                    if(c == '\n' && payload_size == 511)
+                    if(c == '\n' && payload_size == PAYLOAD_SIZE-1)
                     {
                         tx_buffer[4+payload_size] = '\r';
                         edge_case = true;
@@ -420,7 +415,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
                     }
                 }
 
-                if(payload_size >= 512)
+                if(payload_size >= PAYLOAD_SIZE)
                 {
                     break;
                 }
@@ -428,7 +423,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
         }
         else
         {
-            file.read((&tx_buffer[4]), 512);
+            file.read((&tx_buffer[4]), PAYLOAD_SIZE);
             payload_size = file.gcount();
         }
 
@@ -440,7 +435,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
             {
                 if(receiver_addr.sin_port != client_addr.sin_port || receiver_addr.sin_addr.s_addr != client_addr.sin_addr.s_addr)
                 {
-                    sendError(transfer_socket, receiver_addr, 5, "[Unauthorized client]");
+                    sendError(transfer_socket, receiver_addr, ACCESS_VIOLATION_ERROR_CODE, "[Unauthorized client]");
                     continue;
                 }
                 std::cout<<"Packet ID: "<<block_number<<std::endl;
@@ -453,8 +448,7 @@ void sendData(char (&tx_buffer)[TX_BUFFER_SIZE], char (&rx_buffer)[RX_BUFFER_SIZ
                 sendto(transfer_socket, tx_buffer, 4+payload_size, 0, (const sockaddr *)&client_addr, sizeof(client_addr));
             }
         }
-        if(payload_size < 512) break;
+        if(payload_size < PAYLOAD_SIZE) break;
     }
     close(transfer_socket);
 }
-
