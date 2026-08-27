@@ -4,7 +4,7 @@ import struct
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 9069
 
-def test_rrq():
+def test_valid_rrq():
     """
     This test checks if server reacts approprietly to valid RRQ.
     """
@@ -55,7 +55,7 @@ def test_rrq():
         sock.close()
 
 
-def test_wrq():
+def test_valid_wrq():
     """
     This test checks if server reacts approprietly to valid WRQ.
     """

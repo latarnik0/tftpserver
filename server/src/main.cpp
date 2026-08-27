@@ -8,55 +8,6 @@
 #include <cstdlib>
 #include <ctime>
 
-int createSocket()
-{
-    int main_socket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (main_socket < 0) 
-    {
-        std::cerr << "Socket creation error" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-    std::cout << "Socket created" << std::endl;
-    return main_socket;
-}
-
-void bindSocket(int main_sock, const sockaddr_in& server_address)
-{
-    if (bind(main_sock, (const sockaddr *)&server_address, sizeof(server_address)) < 0)
-    {
-        std::cerr << "Bind error" << std::endl;
-        close(main_sock);
-        exit(EXIT_FAILURE); 
-    }
-    std::cout << "Bind executed" << std::endl;
-}
-
-sockaddr_in makeServerAddress()
-{
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(MAIN_PORT);
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    return server_addr;
-}
-
-bool waitForInitialPacket(int main_socket, char* rx_buffer, sockaddr_in& client_addr, socklen_t& client_addr_len)
-{
-    struct timeval tv_infinite;
-    tv_infinite.tv_sec = 0;  
-    tv_infinite.tv_usec = 0; 
-    
-    setsockopt(main_socket, SOL_SOCKET, SO_RCVTIMEO, &tv_infinite, sizeof(tv_infinite));
-
-    if (recvfrom(main_socket, rx_buffer, RX_BUFFER_SIZE, 0, (sockaddr *)&client_addr, &client_addr_len) < 0) 
-    {
-        std::cerr << "Recvfrom error" << std::endl;
-        return false;
-    }
-    return true;
-}
-
 int main() 
 {
     srand(time(NULL));

@@ -4,7 +4,7 @@ import struct
 SERVER_IP = "127.0.0.1"
 SERVER_PORT = 9069 
 
-def test_rrq_nonexistent_file_returns_error_1():
+def test_rrq_nonexistent_file_returns_error_code_1():
     """
     This test checks if server reacts approprietly to RRQ for non-existent file.
     """
@@ -33,7 +33,7 @@ def test_rrq_nonexistent_file_returns_error_1():
         sock.close()
 
 
-def test_access_violation_returns_error_2():
+def test_access_violation_returns_error_code_2():
     """
     This test checks if server reacts approprietly to path traversal attempt.
     """
@@ -62,8 +62,10 @@ def test_access_violation_returns_error_2():
         sock.close()
 
 
+# def test_returns_error_code_3()
 
-def test_illegal_opcode_returns_error_4():
+
+def test_illegal_opcode_returns_error_code_4():
     """
     This test checks if server reacts approprietly to illegal TFTP operation.
     """
@@ -92,7 +94,7 @@ def test_illegal_opcode_returns_error_4():
         sock.close()
 
 
-def test_unauthorized_client_returns_error_5():
+def test_unauthorized_client_returns_error_code_5():
     """
     This test check if server reacts apprioprietly to possible transfer hijacking.
     """
